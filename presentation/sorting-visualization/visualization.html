@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Sorting Algorithms Visualization</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/carbon-components/10.58.3/css/carbon-components.min.css" />
+        <style>
+            body {
+                background-color: #f4f4f4;
+                font-family: "IBM Plex Sans", sans-serif;
+            }
+            .bx--content {
+                padding: 2rem;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
+            #controls {
+                margin-bottom: 1rem;
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+            #info,
+            #stats {
+                font-family: "IBM Plex Mono", monospace;
+                margin-bottom: 1rem;
+            }
+            #canvas {
+                background-color: #ffffff;
+                border-radius: 4px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+        </style>
+    </head>
+    <body>
+        <div class="bx--content">
+            <h1 class="bx--type-productive-heading-05">Sorting Algorithms Visualization</h1>
+            <div id="controls" class="bx--form-item">
+                <div class="bx--number bx--number--helpertext">
+                    <label for="arraySize" class="bx--label">Array Size</label>
+                    <div class="bx--number__input-wrapper">
+                        <input type="number" id="arraySize" min="10" max="1000" value="50" class="bx--number__input" />
+                    </div>
+                    <div class="bx--form__helper-text">Choose a size between 10 and 1000</div>
+                </div>
+                <div class="bx--number bx--number--helpertext">
+                    <label for="algorithmSelect" class="bx--label">Sorting Algorithms</label>
+                    <select id="algorithmSelect" class="bx--select-input">
+                        <option value="insertion">Insertion Sort</option>
+                        <option value="bubble">Bubble Sort</option>
+                        <option value="selection">Selection Sort</option>
+                        <option value="merge">Merge Sort</option>
+                        <option value="quick">Quick Sort</option>
+                        <option value="shell">Shell Sort</option>
+                        <option value="heap">Heap Sort</option>
+                        <option value="counting">Counting Sort</option>
+                        <option value="radix">Radix Sort</option>
+                        <option value="cocktail">Cocktail Shaker Sort</option>
+                        <option value="gnome">Gnome Sort</option>
+                        <option value="comb">Comb Sort</option>
+                    </select>
+                </div>
+                <button class="bx--btn bx--btn--primary" onclick="generateArray()">Generate New Array</button>
+                <button class="bx--btn bx--btn--secondary" onclick="startSort()">Start Sorting</button>
+                <button class="bx--btn bx--btn--tertiary" onclick="generateArraySorted()">Generate Sorted Array</button>
+                <button class="bx--btn bx--btn--tertiary" onclick="generateArrayReversed()">Generate Reversed Array</button>
+                <button class="bx--btn bx--btn--tertiary" onclick="generateArrayFewUnique()">Generate Few Unique Array</button>
+            </div>
+            <div id="info" class="bx--type-body-short-01"></div>
+            <div id="stats" class="bx--type-body-short-01"></div>
+            <canvas id="canvas" width="800" height="300"></canvas>
+        </div>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/carbon-components/10.58.3/scripts/carbon-components.min.js"></script>
+        <script>
+            let array = [];
+            const maxValue = 100;
+            const canvas = document.getElementById("canvas");
+            const ctx = canvas.getContext("2d");
+            const arraySize = document.getElementById("arraySize");
+            const info = document.getElementById("info");
+            const stats = document.getElementById("stats");
+            let animationFrameId = null;
+            let sortingInProgress = false;
+            let updateInterval = 1;
+            let highestMemory = 0;
+            let expectedOperations = {
+                optimal: 0,
+                average: 0,
+                worst: 0,
+            };
+
+            function calculateUpdateInterval() {
+                const size = array.length;
+                if (size > 500) {
+                    updateInterval = Math.floor(size / 100);
+                } else if (size > 100) {
+                    updateInterval = 5;
+                } else {
+                    updateInterval = 1;
+                }
+            }
+
+            function generateArray() {
+                const size = parseInt(arraySize.value);
+                array = Array.from({ length: size }, () => Math.floor(Math.random() * maxValue) + 1);
+                updateChart();
+                calculateUpdateInterval();
+                calculateExpectedOperations();
+            }
+
+            function generateArraySorted() {
+                const size = parseInt(arraySize.value);
+                array = Array.from({ length: size }, (_, index) => Math.floor((index / size) * maxValue) + 1);
+                updateChart();
+                calculateUpdateInterval();
+                calculateExpectedOperations();
+            }
+
+            function generateArrayReversed() {
+                const size = parseInt(arraySize.value);
+                array = Array.from({ length: size }, (_, index) => Math.floor(((size - index) / size) * maxValue) + 1);
+                updateChart();
+                calculateUpdateInterval();
+                calculateExpectedOperations();
+            }
+
+            function generateArrayFewUnique() {
+                const size = parseInt(arraySize.value);
+                array = Array.from({ length: size }, () => Math.floor(Math.random() * 5) * (maxValue / 5) + 1);
+                updateChart();
+                calculateUpdateInterval();
+                calculateExpectedOperations();
+            }
+
+            function calculateExpectedOperations() {
+                const n = array.length;
+                const algorithm = document.getElementById("algorithmSelect").value;
+
+                switch (algorithm) {
+                    case "insertion":
+                    case "bubble":
+                    case "selection":
+                        expectedOperations.optimal = n - 1;
+                        expectedOperations.average = (n * n) / 4;
+                        expectedOperations.worst = (n * n) / 2;
+                        break;
+                    case "merge":
+                    case "heap":
+                        expectedOperations.optimal = n * Math.log2(n);
+                        expectedOperations.average = n * Math.log2(n);
+                        expectedOperations.worst = n * Math.log2(n);
+                        break;
+                    case "quick":
+                        expectedOperations.optimal = n * Math.log2(n);
+                        expectedOperations.average = n * Math.log2(n);
+                        expectedOperations.worst = (n * n) / 2;
+                        break;
+                    case "shell":
+                        expectedOperations.optimal = n;
+                        expectedOperations.average = n * Math.log2(n);
+                        expectedOperations.worst = (n * n) / 2;
+                        break;
+                    case "counting":
+                    case "radix":
+                        expectedOperations.optimal = n + maxValue;
+                        expectedOperations.average = n + maxValue;
+                        expectedOperations.worst = n + maxValue;
+                        break;
+                    case "cocktail":
+                    case "gnome":
+                    case "comb":
+                        expectedOperations.optimal = n - 1;
+                        expectedOperations.average = (n * n) / 2;
+                        expectedOperations.worst = n * n;
+                        break;
+                    default:
+                        expectedOperations.optimal = 0;
+                        expectedOperations.average = 0;
+                        expectedOperations.worst = 0;
+                }
+            }
+
+            async function updateInfo(algorithm, index, comparisons, swaps, memory, operations) {
+                highestMemory = Math.max(highestMemory, memory);
+                info.innerText = `${algorithm} Sort: Index: ${zpad(index, 3)} / Comparisons: ${zpad(comparisons, 4)} / Swaps: ${zpad(swaps, 4)} / Memory: ${zpad(memory, 4)} / Operations: ${zpad(operations, 6)}`;
+                if (operations % updateInterval === 0) {
+                    updateChart(index, index + 1);
+                    await new Promise((resolve) => requestAnimationFrame(resolve));
+                }
+            }
+
+            function updateChart(compareIndex = -1, swapIndex = -1, gapStart = -1, gapEnd = -1, validationIndex = -1) {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                const barWidth = canvas.width / array.length;
+                array.forEach((value, index) => {
+                    const barHeight = (value / maxValue) * canvas.height;
+                    ctx.fillStyle = "#0f62fe"; // IBM Carbon Blue 60
+                    if (index >= gapStart && index <= gapEnd) {
+                        ctx.fillStyle = "#ff832b"; // IBM Carbon Orange 40
+                    }
+                    if (index === compareIndex) {
+                        ctx.fillStyle = "#da1e28"; // IBM Carbon Red 60
+                    }
+                    if (index === swapIndex) {
+                        ctx.fillStyle = "#1192e8"; // IBM Carbon Blue 50
+                    }
+                    if (index <= validationIndex) {
+                        ctx.fillStyle = "#42be65"; // IBM Carbon Green 50
+                    }
+                    ctx.fillRect(index * barWidth, canvas.height - barHeight, barWidth - 1, barHeight);
+                });
+            }
+
+            function zpad(num, len) {
+                return num.toString().padStart(len, "0");
+            }
+
+            async function insertionSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length; // Initial memory usage
+
+                for (let i = 1; i < array.length; i++) {
+                    let key = array[i];
+                    let j = i - 1;
+                    memory++; // Additional memory for key
+                    while (j >= 0 && array[j] > key) {
+                        comparisons++;
+                        array[j + 1] = array[j];
+                        j--;
+                        swaps++;
+                        operations += 2; // 1 comparison, 1 swap
+                        await updateInfo("Insertion", i, comparisons, swaps, memory, operations);
+                    }
+                    array[j + 1] = key;
+                    swaps++;
+                    operations++;
+                    memory--; // Release memory for key
+                    await updateInfo("Insertion", i, comparisons, swaps, memory, operations);
+                }
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function bubbleSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length; // Initial memory usage
+
+                for (let i = 0; i < array.length; i++) {
+                    for (let j = 0; j < array.length - i - 1; j++) {
+                        comparisons++;
+                        operations++;
+                        if (array[j] > array[j + 1]) {
+                            [array[j], array[j + 1]] = [array[j + 1], array[j]];
+                            swaps++;
+                            operations++;
+                        }
+                        await updateInfo("Bubble", j, comparisons, swaps, memory, operations);
+                    }
+                }
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function selectionSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length + 1; // Initial memory usage + minIndex
+
+                for (let i = 0; i < array.length - 1; i++) {
+                    let minIndex = i;
+                    for (let j = i + 1; j < array.length; j++) {
+                        comparisons++;
+                        operations++;
+                        if (array[j] < array[minIndex]) {
+                            minIndex = j;
+                        }
+                        await updateInfo("Selection", j, comparisons, swaps, memory, operations);
+                    }
+                    if (minIndex !== i) {
+                        [array[i], array[minIndex]] = [array[minIndex], array[i]];
+                        swaps++;
+                        operations++;
+                    }
+                    await updateInfo("Selection", i, comparisons, swaps, memory, operations);
+                }
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function mergeSort(start = 0, end = array.length - 1) {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length; // Initial memory usage
+
+                async function merge(start, mid, end) {
+                    const left = array.slice(start, mid + 1);
+                    const right = array.slice(mid + 1, end + 1);
+                    memory += mid - start + 1 + (end - mid); // Additional memory for left and right arrays
+                    let i = 0,
+                        j = 0,
+                        k = start;
+
+                    while (i < left.length && j < right.length) {
+                        comparisons++;
+                        operations++;
+                        if (left[i] <= right[j]) {
+                            array[k] = left[i];
+                            i++;
+                        } else {
+                            array[k] = right[j];
+                            j++;
+                        }
+                        swaps++;
+                        operations++;
+                        k++;
+                        await updateInfo("Merge", k, comparisons, swaps, memory, operations);
+                    }
+
+                    while (i < left.length) {
+                        array[k] = left[i];
+                        i++;
+                        k++;
+                        swaps++;
+                        operations++;
+                        await updateInfo("Merge", k, comparisons, swaps, memory, operations);
+                    }
+
+                    while (j < right.length) {
+                        array[k] = right[j];
+                        j++;
+                        k++;
+                        swaps++;
+                        operations++;
+                        await updateInfo("Merge", k, comparisons, swaps, memory, operations);
+                    }
+
+                    memory -= mid - start + 1 + (end - mid); // Release memory for left and right arrays
+                }
+
+                if (start < end) {
+                    const mid = Math.floor((start + end) / 2);
+                    await mergeSort(start, mid);
+                    await mergeSort(mid + 1, end);
+                    await merge(start, mid, end);
+                }
+
+                if (start === 0 && end === array.length - 1) {
+                    await validateSort(operations);
+                    sortingInProgress = false;
+                }
+            }
+
+async function quickSort(low = 0, high = array.length - 1) {
+    let comparisons = 0;
+    let swaps = 0;
+    let operations = 0;
+    let memory = array.length + 3; // Initial memory usage + pivot, low, high
+
+    async function partition(low, high) {
+        const pivot = array[high];
+        let i = low - 1;
+        let needsUpdate = false;
+
+        for (let j = low; j < high; j++) {
+            comparisons++;
+            operations++;
+            if (array[j] < pivot) {
+                i++;
+                [array[i], array[j]] = [array[j], array[i]];
+                swaps++;
+                operations++;
+                needsUpdate = true;
+            }
+        }
+
+        [array[i + 1], array[high]] = [array[high], array[i + 1]];
+        swaps++;
+        operations++;
+        needsUpdate = true;
+
+        if (needsUpdate) {
+            await updateInfo("Quick", high, comparisons, swaps, memory, operations);
+        }
+
+        return i + 1;
+    }
+
+    if (low < high) {
+        const pivotIndex = await partition(low, high);
+        await quickSort(low, pivotIndex - 1);
+        await quickSort(pivotIndex + 1, high);
+    }
+
+    if (low === 0 && high === array.length - 1) {
+        await validateSort(operations);
+        sortingInProgress = false;
+    }
+}
+
+            async function shellSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length + 1; // Initial memory usage + gap
+
+                const n = array.length;
+                for (let gap = Math.floor(n / 2); gap > 0; gap = Math.floor(gap / 2)) {
+                    if (gap % 2 === 0) gap++;
+                    for (let i = gap; i < n; i++) {
+                        let temp = array[i];
+                        memory++; // Additional memory for temp
+                        let j;
+                        for (j = i; j >= gap && array[j - gap] > temp; j -= gap) {
+                            comparisons++;
+                            array[j] = array[j - gap];
+                            swaps++;
+                            operations += 2; // 1 comparison, 1 swap
+                            await updateInfo("Shell", i, comparisons, swaps, memory, operations);
+                        }
+                        if (j !== i) {
+                            array[j] = temp;
+                            swaps++;
+                            operations++;
+                            await updateInfo("Shell", i, comparisons, swaps, memory, operations);
+                        }
+                        memory--; // Release memory for temp
+                    }
+                }
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function heapSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length + 1; // Initial memory usage + largest
+
+                async function heapify(n, i) {
+                    let largest = i;
+                    const left = 2 * i + 1;
+                    const right = 2 * i + 2;
+
+                    if (left < n && array[left] > array[largest]) {
+                        largest = left;
+                    }
+                    comparisons++;
+                    operations++;
+
+                    if (right < n && array[right] > array[largest]) {
+                        largest = right;
+                    }
+                    comparisons++;
+                    operations++;
+
+                    if (largest !== i) {
+                        [array[i], array[largest]] = [array[largest], array[i]];
+                        swaps++;
+                        operations++;
+                        await updateInfo("Heap", i, comparisons, swaps, memory, operations);
+                        await heapify(n, largest);
+                    }
+                }
+
+                const n = array.length;
+
+                for (let i = Math.floor(n / 2) - 1; i >= 0; i--) {
+                    await heapify(n, i);
+                }
+
+                for (let i = n - 1; i > 0; i--) {
+                    [array[0], array[i]] = [array[i], array[0]];
+                    swaps++;
+                    operations++;
+                    await updateInfo("Heap", i, comparisons, swaps, memory, operations);
+                    await heapify(i, 0);
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function countingSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                const n = array.length;
+                const max = Math.max(...array);
+                let memory = array.length + max + 1; // Initial memory usage + count array
+
+                const output = new Array(n).fill(0);
+                const count = new Array(max + 1).fill(0);
+
+                for (let i = 0; i < n; i++) {
+                    count[array[i]]++;
+                    operations++;
+                    await updateInfo("Counting", i, comparisons, swaps, memory, operations);
+                }
+
+                for (let i = 1; i <= max; i++) {
+                    count[i] += count[i - 1];
+                    operations++;
+                }
+
+                for (let i = n - 1; i >= 0; i--) {
+                    output[count[array[i]] - 1] = array[i];
+                    count[array[i]]--;
+                    swaps++;
+                    operations++;
+                    await updateInfo("Counting", i, comparisons, swaps, memory, operations);
+                }
+
+                for (let i = 0; i < n; i++) {
+                    array[i] = output[i];
+                    swaps++;
+                    operations++;
+                    await updateInfo("Counting", i, comparisons, swaps, memory, operations);
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function radixSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                const n = array.length;
+                const max = Math.max(...array);
+                let memory = array.length + 10; // Initial memory usage + count array (size 10 for decimal system)
+
+                const countingSortForRadix = async (exp) => {
+                    const output = new Array(n).fill(0);
+                    const count = new Array(10).fill(0);
+                    memory += n; // Additional memory for output array
+
+                    for (let i = 0; i < n; i++) {
+                        count[Math.floor(array[i] / exp) % 10]++;
+                        operations++;
+                    }
+
+                    for (let i = 1; i < 10; i++) {
+                        count[i] += count[i - 1];
+                        operations++;
+                    }
+
+                    for (let i = n - 1; i >= 0; i--) {
+                        const index = Math.floor(array[i] / exp) % 10;
+                        output[count[index] - 1] = array[i];
+                        count[index]--;
+                        swaps++;
+                        operations++;
+                        await updateInfo("Radix", i, comparisons, swaps, memory, operations);
+                    }
+
+                    for (let i = 0; i < n; i++) {
+                        array[i] = output[i];
+                        swaps++;
+                        operations++;
+                    }
+
+                    memory -= n; // Release memory for output array
+                };
+
+                for (let exp = 1; Math.floor(max / exp) > 0; exp *= 10) {
+                    await countingSortForRadix(exp);
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function cocktailShakerSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length; // Initial memory usage
+
+                let swapped = true;
+                let start = 0;
+                let end = array.length - 1;
+
+                while (swapped) {
+                    swapped = false;
+
+                    for (let i = start; i < end; i++) {
+                        comparisons++;
+                        operations++;
+                        if (array[i] > array[i + 1]) {
+                            [array[i], array[i + 1]] = [array[i + 1], array[i]];
+                            swapped = true;
+                            swaps++;
+                            operations++;
+                        }
+                        await updateInfo("Cocktail Shaker", i, comparisons, swaps, memory, operations);
+                    }
+
+                    if (!swapped) break;
+
+                    swapped = false;
+                    end--;
+
+                    for (let i = end - 1; i >= start; i--) {
+                        comparisons++;
+                        operations++;
+                        if (array[i] > array[i + 1]) {
+                            [array[i], array[i + 1]] = [array[i + 1], array[i]];
+                            swapped = true;
+                            swaps++;
+                            operations++;
+                        }
+                        await updateInfo("Cocktail Shaker", i, comparisons, swaps, memory, operations);
+                    }
+
+                    start++;
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function gnomeSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length; // Initial memory usage
+
+                let index = 0;
+
+                while (index < array.length) {
+                    if (index === 0 || array[index] >= array[index - 1]) {
+                        index++;
+                    } else {
+                        [array[index], array[index - 1]] = [array[index - 1], array[index]];
+                        index--;
+                        swaps++;
+                    }
+                    comparisons++;
+                    operations++;
+                    await updateInfo("Gnome", index, comparisons, swaps, memory, operations);
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function combSort() {
+                const getNextGap = (gap) => {
+                    gap = Math.floor((gap * 10) / 13);
+                    return Math.max(1, gap);
+                };
+
+                let gap = array.length;
+                let swapped = true;
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+
+                while (gap !== 1 || swapped) {
+                    gap = getNextGap(gap);
+                    swapped = false;
+
+                    for (let i = 0; i < array.length - gap; i++) {
+                        comparisons++;
+                        if (array[i] > array[i + gap]) {
+                            [array[i], array[i + gap]] = [array[i + gap], array[i]];
+                            swapped = true;
+                            swaps++;
+                        }
+                        operations++;
+                        if (operations % updateInterval === 0) {
+                            info.innerText = `Gap: ${zpad(gap, 3)} / Comparisons: ${zpad(comparisons, 4)} / Swaps: ${zpad(swaps, 4)}`;
+                            updateChart(i, i + gap);
+                            await new Promise((resolve) => requestAnimationFrame(resolve));
+                        }
+                    }
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function combSort() {
+                let comparisons = 0;
+                let swaps = 0;
+                let operations = 0;
+                let memory = array.length + 1; // Initial memory usage + gap
+
+                const getNextGap = (gap) => {
+                    gap = Math.floor((gap * 10) / 13);
+                    return Math.max(1, gap);
+                };
+
+                let gap = array.length;
+                let swapped = true;
+
+                while (gap !== 1 || swapped) {
+                    gap = getNextGap(gap);
+                    swapped = false;
+
+                    for (let i = 0; i < array.length - gap; i++) {
+                        comparisons++;
+                        operations++;
+                        if (array[i] > array[i + gap]) {
+                            [array[i], array[i + gap]] = [array[i + gap], array[i]];
+                            swapped = true;
+                            swaps++;
+                            operations++;
+                        }
+                        await updateInfo("Comb", i, comparisons, swaps, memory, operations);
+                    }
+                }
+
+                await validateSort(operations);
+                sortingInProgress = false;
+            }
+
+            async function validateSort(sortOperations) {
+                let operations = 0;
+                for (let i = 0; i < array.length; i++) {
+                    operations++;
+                    info.innerText = `Validating: ${i + 1} / ${array.length} | Operations: ${operations}`;
+                    if (i > 0 && array[i] < array[i - 1]) {
+                        info.innerText += ` * Sorting error! Array is not sorted. *`;
+                        return;
+                    }
+                    if (i % updateInterval === 0) {
+                        updateChart(-1, -1, -1, -1, i);
+                        await new Promise((resolve) => requestAnimationFrame(resolve));
+                    }
+                }
+                updateChart(-1, -1, -1, -1, array.length - 1);
+                await new Promise((resolve) => requestAnimationFrame(resolve));
+
+                const optimalDiff = sortOperations - expectedOperations.optimal;
+                const avgDiff = sortOperations - expectedOperations.average;
+                const worstDiff = sortOperations - expectedOperations.worst;
+
+                stats.innerHTML = `
+          Sorting complete! Array is sorted.<br>
+          Highest memory usage: ${highestMemory}<br>
+          Actual operations: ${sortOperations}<br>
+          Expected operations (Optimal/Avg/Worst): ${Math.floor(expectedOperations.optimal)}/${Math.floor(expectedOperations.average)}/${Math.floor(expectedOperations.worst)}<br>
+          Difference (Actual - Expected): ${optimalDiff}/${avgDiff}/${worstDiff}
+        `;
+            }
+
+            async function startSort() {
+                if (!sortingInProgress) {
+                    sortingInProgress = true;
+                    highestMemory = 0;
+                    stats.innerHTML = "";
+                    const algorithm = document.getElementById("algorithmSelect").value;
+                    switch (algorithm) {
+                        case "insertion":
+                            await insertionSort();
+                            break;
+                        case "bubble":
+                            await bubbleSort();
+                            break;
+                        case "selection":
+                            await selectionSort();
+                            break;
+                        case "merge":
+                            await mergeSort();
+                            break;
+                        case "quick":
+                            await quickSort();
+                            break;
+                        case "shell":
+                            await shellSort();
+                            break;
+                        case "heap":
+                            await heapSort();
+                            break;
+                        case "counting":
+                            await countingSort();
+                            break;
+                        case "radix":
+                            await radixSort();
+                            break;
+                        case "cocktail":
+                            await cocktailShakerSort();
+                            break;
+                        case "gnome":
+                            await gnomeSort();
+                            break;
+                        case "comb":
+                            await combSort();
+                            break;
+                    }
+                }
+            }
+
+            // Initialize
+            generateArray();
+        </script>
+    </body>
+</html>
