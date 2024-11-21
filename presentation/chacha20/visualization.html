@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChaCha20 Step-by-Step Visualization</title>
+    <style>
+        /* Style the state matrix */
+        .matrix {
+            display: grid;
+            grid-template-columns: repeat(4, 80px);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .matrix div {
+            width: 80px;
+            height: 80px;
+            background-color: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: monospace;
+            font-size: 14px;
+            border: 1px solid #ccc;
+        }
+        .highlight {
+            background-color: #ffeb3b;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+        #description {
+            margin-top: 20px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+<h1>ChaCha20 Step-by-Step Visualization</h1>
+<div id="stateMatrix" class="matrix"></div>
+<button id="prevStep">Previous Step</button>
+<button id="nextStep">Next Step</button>
+<div id="description"></div>
+<script>
+    // Initialize the state matrix with constants, key, counter, and nonce
+    const constants = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574]; // "expand 32-byte k"
+    const key = [ // Placeholder 256-bit key
+        0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c,
+        0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c
+    ];
+    const counter = [0x00000001]; // Starting counter
+    const nonce = [0x00000000, 0x4a000000, 0x00000000]; // Placeholder nonce
+
+    let state = [...constants, ...key, ...counter, ...nonce];
+
+    let steps = [];
+    let currentStep = 0;
+
+    // Precompute the steps (e.g., each quarter-round operation)
+    function computeSteps() {
+        // For simplicity, we'll perform one round and store intermediate states
+        for (let i = 0; i < 20; i += 2) { // ChaCha20 performs 20 rounds
+            // Even rounds (column rounds)
+            quarterRound(state, 0, 4,  8, 12);
+            quarterRound(state, 1, 5,  9, 13);
+            quarterRound(state, 2, 6, 10, 14);
+            quarterRound(state, 3, 7, 11, 15);
+            steps.push([...state]); // Save the state after even round
+
+            // Odd rounds (diagonal rounds)
+            quarterRound(state, 0, 5, 10, 15);
+            quarterRound(state, 1, 6, 11, 12);
+            quarterRound(state, 2, 7,  8, 13);
+            quarterRound(state, 3, 4,  9, 14);
+            steps.push([...state]); // Save the state after odd round
+        }
+    }
+
+    function quarterRound(state, a, b, c, d) {
+        // ChaCha20 quarter-round function
+        state[a] += state[b]; state[d] = rotate(state[d] ^ state[a], 16);
+        state[c] += state[d]; state[b] = rotate(state[b] ^ state[c], 12);
+        state[a] += state[b]; state[d] = rotate(state[d] ^ state[a], 8);
+        state[c] += state[d]; state[b] = rotate(state[b] ^ state[c], 7);
+    }
+
+    function rotate(value, shift) {
+        return ((value << shift) | (value >>> (32 - shift))) >>> 0;
+    }
+
+    function updateMatrixDisplay() {
+        const matrixContainer = document.getElementById('stateMatrix');
+        matrixContainer.innerHTML = '';
+        const currentMatrix = steps[currentStep];
+        currentMatrix.forEach((value, index) => {
+            const cell = document.createElement('div');
+            cell.textContent = value.toString(16).padStart(8, '0');
+            matrixContainer.appendChild(cell);
+        });
+
+        // Update description
+        const description = document.getElementById('description');
+        description.textContent = `Step ${currentStep + 1} of ${steps.length}`;
+    }
+
+    function nextStep() {
+        if (currentStep < steps.length - 1) {
+            currentStep++;
+            updateMatrixDisplay();
+        }
+    }
+
+    function prevStep() {
+        if (currentStep > 0) {
+            currentStep--;
+            updateMatrixDisplay();
+        }
+    }
+
+    // Event listeners for buttons
+    document.getElementById('nextStep').addEventListener('click', nextStep);
+    document.getElementById('prevStep').addEventListener('click', prevStep);
+
+    // Compute steps and initialize display
+    computeSteps();
+    updateMatrixDisplay();
+</script>
+</body>
+</html>
