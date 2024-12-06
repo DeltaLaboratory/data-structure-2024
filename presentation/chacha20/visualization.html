@@ -33,11 +33,19 @@
             margin-top: 20px;
             font-size: 16px;
         }
+        .operator {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 18px;
+        }
     </style>
 </head>
 <body>
 <h1>ChaCha20 Step-by-Step Visualization</h1>
 <div id="stateMatrix" class="matrix"></div>
+<div id="operator" class="operator"></div>
 <button id="prevStep">Previous Step</button>
 <button id="nextStep">Next Step</button>
 <div id="description"></div>
@@ -61,18 +69,20 @@
         // For simplicity, we'll perform one round and store intermediate states
         for (let i = 0; i < 20; i += 2) { // ChaCha20 performs 20 rounds
             // Even rounds (column rounds)
+            steps.push({state: [...state], operator: 'Column Round'});
             quarterRound(state, 0, 4,  8, 12);
             quarterRound(state, 1, 5,  9, 13);
             quarterRound(state, 2, 6, 10, 14);
             quarterRound(state, 3, 7, 11, 15);
-            steps.push([...state]); // Save the state after even round
+            steps.push({state: [...state], operator: 'Column Round Completed'});
 
             // Odd rounds (diagonal rounds)
+            steps.push({state: [...state], operator: 'Diagonal Round'});
             quarterRound(state, 0, 5, 10, 15);
             quarterRound(state, 1, 6, 11, 12);
             quarterRound(state, 2, 7,  8, 13);
             quarterRound(state, 3, 4,  9, 14);
-            steps.push([...state]); // Save the state after odd round
+            steps.push({state: [...state], operator: 'Diagonal Round Completed'});
         }
     }
 
@@ -91,7 +101,7 @@
     function updateMatrixDisplay() {
         const matrixContainer = document.getElementById('stateMatrix');
         matrixContainer.innerHTML = '';
-        const currentMatrix = steps[currentStep];
+        const currentMatrix = steps[currentStep].state;
         currentMatrix.forEach((value, index) => {
             const cell = document.createElement('div');
             cell.textContent = value.toString(16).padStart(8, '0');
@@ -100,7 +110,11 @@
 
         // Update description
         const description = document.getElementById('description');
-        description.textContent = `Step ${currentStep + 1} of ${steps.length}`;
+        description.textContent = `Step ${currentStep + 1} of ${steps.length}: ${steps[currentStep].operator}`;
+
+        // Update operator display
+        const operator = document.getElementById('operator');
+        operator.textContent = steps[currentStep].operator;
     }
 
     function nextStep() {

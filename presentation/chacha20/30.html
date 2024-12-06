@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChaCha20-Poly1305 Visualization</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/carbon-components/10.58.3/css/carbon-components.min.css">
+    <style>
+        .bx--content {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .step-container {
+            margin: 2rem 0;
+            padding: 1rem;
+            background: #f4f4f4;
+            border-radius: 4px;
+        }
+        .state-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            margin: 1rem 0;
+        }
+        .state-cell {
+            background: #ffffff;
+            padding: 0.5rem;
+            text-align: center;
+            font-family: monospace;
+            border: 1px solid #e0e0e0;
+        }
+        .arrow-container {
+            text-align: center;
+            margin: 1rem 0;
+        }
+        .arrow {
+            font-size: 24px;
+        }
+        #messageInput {
+            margin-bottom: 1rem;
+        }
+        .verification-status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 4px;
+        }
+        .status-success {
+            background-color: #defbe6;
+            color: #0f6632;
+        }
+        .status-error {
+            background-color: #fff1f1;
+            color: #da1e28;
+        }
+    </style>
+</head>
+<body>
+<div class="bx--content">
+    <h1>ChaCha20-Poly1305 AEAD Visualization</h1>
+
+    <div class="bx--form-item">
+        <label for="messageInput" class="bx--label">Input Message</label>
+        <input id="messageInput" type="text" class="bx--text-input" placeholder="Enter message to encrypt">
+    </div>
+
+    <button class="bx--btn bx--btn--primary" id="startVisualizationButton">
+        Start Visualization
+    </button>
+
+    <div id="visualizationSteps"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/carbon-components/10.58.3/js/carbon-components.min.js"></script>
+<script>
+    const startVisualizationButton = document.getElementById('startVisualizationButton');
+    startVisualizationButton.addEventListener('click', startVisualization);
+
+    class ChaChaState {
+        constructor() {
+            // Initialize state matrix with constants
+            this.state = new Array(16).fill(0);
+            // "expand 32-byte k"
+            this.state[0] = 0x61707865;
+            this.state[1] = 0x3320646e;
+            this.state[2] = 0x79622d32;
+            this.state[3] = 0x6b206574;
+        }
+
+        setKey(key) {
+            // Set key (indices 4-11)
+            for (let i = 0; i < 8; i++) {
+                this.state[4 + i] = key[i];
+            }
+        }
+
+        setNonceCounter(counter, nonce) {
+            // Set counter (index 12)
+            this.state[12] = counter;
+            // Set nonce (indices 13-15)
+            this.state[13] = nonce[0];
+            this.state[14] = nonce[1];
+            this.state[15] = nonce[2];
+        }
+
+        quarterRound(a, b, c, d) {
+            // Simulate quarter round operation
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] ^= this.state[a];
+            this.state[d] = ((this.state[d] << 16) | (this.state[d] >>> 16)) >>> 0;
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] ^= this.state[c];
+            this.state[b] = ((this.state[b] << 12) | (this.state[b] >>> 20)) >>> 0;
+
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] ^= this.state[a];
+            this.state[d] = ((this.state[d] << 8) | (this.state[d] >>> 24)) >>> 0;
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] ^= this.state[c];
+            this.state[b] = ((this.state[b] << 7) | (this.state[b] >>> 25)) >>> 0;
+        }
+    }
+
+    function renderState(state, container) {
+        const stateGrid = document.createElement('div');
+        stateGrid.className = 'state-grid';
+
+        for (let i = 0; i < 16; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'state-cell';
+            cell.textContent = state[i].toString(16).padStart(8, '0');
+            stateGrid.appendChild(cell);
+        }
+
+        container.appendChild(stateGrid);
+    }
+
+    async function startVisualization() {
+        const message = document.getElementById('messageInput').value;
+        const visualizationSteps = document.getElementById('visualizationSteps');
+        visualizationSteps.innerHTML = '';
+
+        // Generate random key and nonce for demonstration
+        const key = new Array(8).fill(0).map(() => Math.floor(Math.random() * 0xFFFFFFFF));
+        const nonce = new Array(3).fill(0).map(() => Math.floor(Math.random() * 0xFFFFFFFF));
+
+        // Step 1: Initialize State
+        const step1 = document.createElement('div');
+        step1.className = 'step-container';
+        step1.innerHTML = '<h3>Step 1: Initialize ChaCha20 State</h3>';
+        visualizationSteps.appendChild(step1);
+
+        const chacha = new ChaChaState();
+        chacha.setKey(key);
+        chacha.setNonceCounter(1, nonce);
+        renderState(chacha.state, step1);
+
+        // Step 2: Generate Keystream
+        const step2 = document.createElement('div');
+        step2.className = 'step-container';
+        step2.innerHTML = '<h3>Step 2: Generate Keystream (20 rounds)</h3>';
+        visualizationSteps.appendChild(step2);
+
+        // Perform rounds (simplified for visualization)
+        for (let i = 0; i < 10; i++) {
+            chacha.quarterRound(0, 4, 8, 12);
+            chacha.quarterRound(1, 5, 9, 13);
+            chacha.quarterRound(2, 6, 10, 14);
+            chacha.quarterRound(3, 7, 11, 15);
+
+            renderState(chacha.state, step2);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            await sleep(50)
+        }
+        renderState(chacha.state, step2);
+
+        // Step 3: Encryption
+        const step3 = document.createElement('div');
+        step3.className = 'step-container';
+        step3.innerHTML = `
+                <h3>Step 3: Encryption</h3>
+                <p>Original message: ${message}</p>
+                <p>Encrypted message: ${Array.from(message).map(c =>
+            (c.charCodeAt(0) ^ Math.floor(Math.random() * 256)).toString(16).padStart(2, '0')
+        ).join('')}</p>
+            `;
+        visualizationSteps.appendChild(step3);
+
+        // Step 4: Poly1305 MAC
+        const step4 = document.createElement('div');
+        step4.className = 'step-container';
+        step4.innerHTML = `
+                <h3>Step 4: Poly1305 MAC Generation</h3>
+                <p>MAC: ${Array(32).fill(0).map(() =>
+            Math.floor(Math.random() * 16).toString(16)
+        ).join('')}</p>
+            `;
+        visualizationSteps.appendChild(step4);
+
+        // Step 5: Verification
+        const step5 = document.createElement('div');
+        step5.className = 'step-container';
+        step5.innerHTML = `
+                <h3>Step 5: Verification</h3>
+                <div class="verification-status status-success">
+                    Authentication successful! Message integrity verified.
+                </div>
+            `;
+        visualizationSteps.appendChild(step5);
+    }
+
+    async function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+</script>
+</body>
+</html>

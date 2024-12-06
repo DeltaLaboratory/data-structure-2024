@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>분산 데이터베이스 구현 중간발표</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            font-family: Arial, sans-serif;
+        }
+        .slide {
+            display: none;
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background-color: #f4f4f9;
+            color: #333;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .active {
+            display: flex;
+            flex-direction: column;
+            opacity: 1;
+        }
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            text-align: center;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 0 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<div id="slide0" class="slide active">
+    <h1>분산 데이터베이스 구현 중간발표</h1>
+    <p>2024-12-02</p>
+</div>
+<div id="slide1" class="slide">
+    <h1>이전 피드백 정리</h1>
+    <p>TiKV라는 Spanner랑 비슷한 오픈 소스 데이터베이스가 있는데 그걸 쓸 경우 단점이 없어짐 -> 알고 있습니다. 그런데 기존 솔루션을 고려하면 아무것도 만들 수가 없습니다. 또한 TiKV 자체의 여러가지 문제점이 있다</p>
+    <p>내용적으로는 정말 설명도 잘 되면서, 목소리 톤과 속도가 너무 좋았습니다. 잔잔하면서 주요한 내용이 귀에 딱 들어오는게 좋네요. 하나 아쉬운 점은 발표자료를 한번만 보고서 이제 청중들을 바라보고 말해주시면 좋겠네요. 한번 화면을 보고서 키워드를 딱 알았으면 다시 안 보는게 좋을 것 같습니다. -> 개선하려는 노력을 하도록 하겠다</p>
+</div>
+<div id="slide2" class="slide">
+    <h1>변경점 1</h1>
+    <p>Gosship protocol 기반 설정 전파를 버리고, Raft 알고리즘을 통해 리더를 선출해서 그 노드가 설정을 모두 관리하는 방식으로 만들 예정입니다.</p>
+</div>
+<div id="slide3" class="slide">
+    <h1>변경점 2</h1>
+    <h2>쿼리 언어 정의가 달라졌습니다.</h2>
+    <pre>
+(* Top-level syntax *)
+syntax = query, space, key_clause ;
+
+(* Query clause *)
+query = "QUERY", space, "(", field_list, ")" ;
+
+(* Field list *)
+field_list = field, { comma, field } ;
+
+(* Individual field *)
+field = identifier ;
+
+(* Key clause *)
+key_clause = "KEY", space, key_value ;
+
+(* Basic elements *)
+identifier = letter, { letter | digit | underscore } ;
+key_value = identifier ;
+letter = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I" | "J" | "K" | "L" | "M" |
+         "N" | "O" | "P" | "Q" | "R" | "S" | "T" | "U" | "V" | "W" | "X" | "Y" | "Z" |
+         "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "k" | "l" | "m" |
+         "n" | "o" | "p" | "q" | "r" | "s" | "t" | "u" | "v" | "w" | "x" | "y" | "z" ;
+digit = "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" ;
+underscore = "_" ;
+space = " ", { " " } ;
+comma = ",", [ space ] ;
+    </pre>
+</div>
+<div id="slide4" class="slide">
+    <h1>슬라이드 3</h1>
+    <p>일정:</p>
+    <ul>
+        <li>1주일 내로 통신을 구현할 예정</li>
+    </ul>
+</div>
+<div id="slide5" class="slide">
+    <h1>감사합니다</h1>
+</div>
+
+<div class="controls">
+    <button onclick="prevSlide()">이전</button>
+    <button onclick="nextSlide()">다음</button>
+</div>
+
+<script>
+    let currentSlide = 0;
+    const slides = document.querySelectorAll('.slide');
+
+    function showSlide(index) {
+        slides.forEach((slide, i) => {
+            slide.classList.remove('active');
+            if (i === index) {
+                slide.classList.add('active');
+            }
+        });
+    }
+
+    function nextSlide() {
+        currentSlide = (currentSlide + 1) % slides.length;
+        showSlide(currentSlide);
+    }
+
+    function prevSlide() {
+        currentSlide = (currentSlide - 1 + slides.length) % slides.length;
+        showSlide(currentSlide);
+    }
+</script>
+
+</body>
+</html>

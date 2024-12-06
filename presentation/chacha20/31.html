@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChaCha20-Poly1305 Encryption</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/carbon-components/10.58.3/css/carbon-components.min.css">
+    <style>
+        .bx--content {
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .step-container {
+            margin: 2rem 0;
+            padding: 1rem;
+            background: #f4f4f4;
+            border-radius: 4px;
+        }
+        .state-matrix {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.5rem;
+            margin: 1rem 0;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .matrix-cell {
+            background: #ffffff;
+            padding: 0.5rem;
+            text-align: center;
+            border: 1px solid #e0e0e0;
+        }
+        .bytes-view {
+            font-family: 'IBM Plex Mono', monospace;
+            word-break: break-all;
+            background: #ffffff;
+            padding: 1rem;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+        .error {
+            color: #da1e28;
+            background: #fff1f1;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+        .success {
+            color: #0f6632;
+            background: #defbe6;
+            padding: 1rem;
+            border-radius: 4px;
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+<body>
+<div class="bx--content">
+    <h1>ChaCha20-Poly1305 AEAD Encryption</h1>
+
+    <div class="bx--form-item">
+        <label for="messageInput" class="bx--label">Message</label>
+        <input id="messageInput" type="text" class="bx--text-input" placeholder="Enter message to encrypt">
+    </div>
+
+    <div class="bx--form-item">
+        <label for="aadInput" class="bx--label">Additional Authenticated Data (AAD)</label>
+        <input id="aadInput" type="text" class="bx--text-input" placeholder="Optional AAD">
+    </div>
+
+    <div class="bx--button-group">
+        <button class="bx--btn bx--btn--primary" onclick="encryptMessage()">
+            Encrypt
+        </button>
+        <button class="bx--btn bx--btn--secondary" onclick="decryptMessage()">
+            Decrypt
+        </button>
+    </div>
+
+    <div id="results"></div>
+</div>
+
+<script>
+    // ChaCha20 constants
+    const SIGMA = new Uint8Array([
+        101, 120, 112, 97, // "expa"
+        110, 100, 32, 51,  // "nd 3"
+        50, 45, 98, 121,   // "2-by"
+        116, 101, 32, 107  // "te k"
+    ]);
+
+    function rotl(a, b) {
+        return ((a << b) | (a >>> (32 - b))) >>> 0;
+    }
+
+    class ChaCha20 {
+        constructor(key, nonce) {
+            this.state = new Uint32Array(16);
+
+            // Setup constants
+            this.state[0] = (SIGMA[0] | (SIGMA[1] << 8) | (SIGMA[2] << 16) | (SIGMA[3] << 24)) >>> 0;
+            this.state[1] = (SIGMA[4] | (SIGMA[5] << 8) | (SIGMA[6] << 16) | (SIGMA[7] << 24)) >>> 0;
+            this.state[2] = (SIGMA[8] | (SIGMA[9] << 8) | (SIGMA[10] << 16) | (SIGMA[11] << 24)) >>> 0;
+            this.state[3] = (SIGMA[12] | (SIGMA[13] << 8) | (SIGMA[14] << 16) | (SIGMA[15] << 24)) >>> 0;
+
+            // Setup key
+            for (let i = 0; i < 8; i++) {
+                this.state[4 + i] = (
+                    key[i * 4] |
+                    (key[i * 4 + 1] << 8) |
+                    (key[i * 4 + 2] << 16) |
+                    (key[i * 4 + 3] << 24)
+                ) >>> 0;
+            }
+
+            // Setup nonce
+            this.state[13] = (nonce[0] | (nonce[1] << 8) | (nonce[2] << 16) | (nonce[3] << 24)) >>> 0;
+            this.state[14] = (nonce[4] | (nonce[5] << 8) | (nonce[6] << 16) | (nonce[7] << 24)) >>> 0;
+            this.state[15] = (nonce[8] | (nonce[9] << 8) | (nonce[10] << 16) | (nonce[11] << 24)) >>> 0;
+        }
+
+        quarterRound(a, b, c, d) {
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] = rotl(this.state[d] ^ this.state[a], 16);
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] = rotl(this.state[b] ^ this.state[c], 12);
+
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] = rotl(this.state[d] ^ this.state[a], 8);
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] = rotl(this.state[b] ^ this.state[c], 7);
+        }
+
+        block(counter) {
+            const working = new Uint32Array(this.state);
+            working[12] = counter;
+
+            // 20 rounds (10 iterations of 2 rounds each)
+            for (let i = 0; i < 10; i++) {
+                // Column round
+                this.quarterRound(0, 4, 8, 12);
+                this.quarterRound(1, 5, 9, 13);
+                this.quarterRound(2, 6, 10, 14);
+                this.quarterRound(3, 7, 11, 15);
+
+                // Diagonal round
+                this.quarterRound(0, 5, 10, 15);
+                this.quarterRound(1, 6, 11, 12);
+                this.quarterRound(2, 7, 8, 13);
+                this.quarterRound(3, 4, 9, 14);
+            }
+
+            // Add working state to initial state
+            for (let i = 0; i < 16; i++) {
+                working[i] = (working[i] + this.state[i]) >>> 0;
+            }
+
+            return working;
+        }
+
+        encrypt(plaintext) {
+            const blocks = Math.ceil(plaintext.length / 64);
+            const ciphertext = new Uint8Array(plaintext.length);
+
+            for (let i = 0; i < blocks; i++) {
+                const keystream = this.block(i);
+                const start = i * 64;
+                const end = Math.min(start + 64, plaintext.length);
+
+                for (let j = start; j < end; j++) {
+                    const keystreamByte = (keystream[Math.floor((j - start) / 4)] >>> ((j - start) % 4 * 8)) & 0xff;
+                    ciphertext[j] = plaintext[j] ^ keystreamByte;
+                }
+            }
+
+            return ciphertext;
+        }
+    }
+
+    class Poly1305 {
+        constructor(key) {
+            // Ensure key is correct length
+            if (!(key instanceof Uint8Array) || key.length !== 32) {
+                throw new Error('Key must be a 32-byte Uint8Array');
+            }
+
+            // Initialize state with appropriate size for calculations
+            this.r = new Uint32Array(5);  // r0,...,r4
+            this.h = new Uint32Array(5);  // h0,...,h4
+            this.pad = new Uint32Array(4); // 128-bit nonce
+            this.leftover = 0;
+            this.buffer = new Uint8Array(16);
+            this.final = false;
+
+            // Clamp r per spec (Section 2.3)
+            // r &= 0xffffffc0ffffffc0ffffffc0fffffff
+            let t0 = readUint32LE(key, 0);
+            let t1 = readUint32LE(key, 4);
+            let t2 = readUint32LE(key, 8);
+            let t3 = readUint32LE(key, 12);
+
+            // Clamp r
+            this.r[0] = t0 & 0x3ffffff;
+            this.r[1] = ((t0 >>> 26) | (t1 << 6)) & 0x3ffffff;
+            this.r[2] = ((t1 >>> 20) | (t2 << 12)) & 0x3ffffff;
+            this.r[3] = ((t2 >>> 14) | (t3 << 18)) & 0x3ffffff;
+            this.r[4] = (t3 >>> 8) & 0x3ffffff;
+
+            // Clear top bits
+            this.r[0] &= 0x3ffffff;
+            this.r[1] &= 0x3ffff03;
+            this.r[2] &= 0x3ffc0ff;
+            this.r[3] &= 0x3f03fff;
+            this.r[4] &= 0x00fffff;
+
+            // Load pad (16 bytes starting at key[16])
+            for (let i = 0; i < 4; i++) {
+                this.pad[i] = readUint32LE(key, 16 + (i * 4));
+            }
+        }
+
+        blocks(m, mPos, bytes) {
+            const hibit = this.final ? 0 : (1 << 24);
+            let h0 = this.h[0],
+                h1 = this.h[1],
+                h2 = this.h[2],
+                h3 = this.h[3],
+                h4 = this.h[4];
+
+            const r0 = this.r[0],
+                r1 = this.r[1],
+                r2 = this.r[2],
+                r3 = this.r[3],
+                r4 = this.r[4];
+
+            while (bytes >= 16) {
+                // h += m
+                let t0 = readUint32LE(m, mPos + 0);
+                let t1 = readUint32LE(m, mPos + 4);
+                let t2 = readUint32LE(m, mPos + 8);
+                let t3 = readUint32LE(m, mPos + 12);
+
+                h0 += t0 & 0x3ffffff;
+                h1 += ((t0 >>> 26) | (t1 << 6)) & 0x3ffffff;
+                h2 += ((t1 >>> 20) | (t2 << 12)) & 0x3ffffff;
+                h3 += ((t2 >>> 14) | (t3 << 18)) & 0x3ffffff;
+                h4 += (t3 >>> 8) | hibit;
+
+                // h *= r
+                let c = 0;
+                let d0 = c;
+                c = (h0 * r0 + d0) >>> 26; h0 = (h0 * r0 + d0) & 0x3ffffff;
+                d0 = (h1 * r4 + h2 * r3 + h3 * r2 + h4 * r1) * 5;
+                c += (h0 * r1 + h1 * r0 + d0) >>> 26; h1 = (h0 * r1 + h1 * r0 + d0) & 0x3ffffff;
+                d0 = (h2 * r4 + h3 * r3 + h4 * r2) * 5;
+                c += (h1 * r2 + h2 * r1 + h3 * r0 + d0) >>> 26; h2 = (h1 * r2 + h2 * r1 + h3 * r0 + d0) & 0x3ffffff;
+                d0 = (h3 * r4 + h4 * r3) * 5;
+                c += (h2 * r3 + h3 * r2 + h4 * r1 + d0) >>> 26; h3 = (h2 * r3 + h3 * r2 + h4 * r1 + d0) & 0x3ffffff;
+                d0 = h4 * r4 * 5;
+                c += (h3 * r4 + h4 * r3 + d0) >>> 26; h4 = (h3 * r4 + h4 * r3 + d0) & 0x3ffffff;
+                h0 += c * 5;
+                c = h0 >>> 26; h0 &= 0x3ffffff;
+                h1 += c;
+
+                mPos += 16;
+                bytes -= 16;
+            }
+
+            this.h[0] = h0;
+            this.h[1] = h1;
+            this.h[2] = h2;
+            this.h[3] = h3;
+            this.h[4] = h4;
+        }
+
+        update(m) {
+            if (!(m instanceof Uint8Array)) {
+                throw new Error('Input must be Uint8Array');
+            }
+
+            let bytes = m.length;
+            let mPos = 0;
+
+            // Handle leftover
+            if (this.leftover) {
+                const want = Math.min(16 - this.leftover, bytes);
+                for (let i = 0; i < want; i++) {
+                    this.buffer[this.leftover + i] = m[mPos + i];
+                }
+                bytes -= want;
+                mPos += want;
+                this.leftover += want;
+
+                if (this.leftover < 16) {
+                    return this;
+                }
+
+                this.blocks(this.buffer, 0, 16);
+                this.leftover = 0;
+            }
+
+            // Process full blocks
+            if (bytes >= 16) {
+                const want = bytes & ~(16 - 1);
+                this.blocks(m, mPos, want);
+                mPos += want;
+                bytes -= want;
+            }
+
+            // Store leftover
+            if (bytes) {
+                for (let i = 0; i < bytes; i++) {
+                    this.buffer[this.leftover + i] = m[mPos + i];
+                }
+                this.leftover += bytes;
+            }
+
+            return this;
+        }
+
+        finish() {
+            // Process the last block
+            if (this.leftover) {
+                this.buffer[this.leftover++] = 1;
+                // Pad with zeros
+                while (this.leftover < 16) {
+                    this.buffer[this.leftover++] = 0;
+                }
+                this.final = true;
+                this.blocks(this.buffer, 0, 16);
+            }
+
+            // Fully carry h
+            let h0 = this.h[0],
+                h1 = this.h[1],
+                h2 = this.h[2],
+                h3 = this.h[3],
+                h4 = this.h[4];
+
+            let c = h1 >>> 26; h1 &= 0x3ffffff;
+            h2 += c; c = h2 >>> 26; h2 &= 0x3ffffff;
+            h3 += c; c = h3 >>> 26; h3 &= 0x3ffffff;
+            h4 += c; c = h4 >>> 26; h4 &= 0x3ffffff;
+            h0 += c * 5; c = h0 >>> 26; h0 &= 0x3ffffff;
+            h1 += c;
+
+            // Compute h - p
+            let g0 = h0 + 5; c = g0 >>> 26; g0 &= 0x3ffffff;
+            let g1 = h1 + c; c = g1 >>> 26; g1 &= 0x3ffffff;
+            let g2 = h2 + c; c = g2 >>> 26; g2 &= 0x3ffffff;
+            let g3 = h3 + c; c = g3 >>> 26; g3 &= 0x3ffffff;
+            let g4 = h4 + c - (1 << 26);
+
+            // Select h if h < p, or h - p if h >= p
+            const mask = (g4 >>> 31) - 1;
+            g0 &= mask;
+            g1 &= mask;
+            g2 &= mask;
+            g3 &= mask;
+            g4 &= mask;
+            const nmask = ~mask;
+            h0 = (h0 & nmask) | g0;
+            h1 = (h1 & nmask) | g1;
+            h2 = (h2 & nmask) | g2;
+            h3 = (h3 & nmask) | g3;
+            h4 = (h4 & nmask) | g4;
+
+            // h = h % (2^128)
+            h0 = ((h0) | (h1 << 26)) & 0xffffffff;
+            h1 = ((h1 >>> 6) | (h2 << 20)) & 0xffffffff;
+            h2 = ((h2 >>> 12) | (h3 << 14)) & 0xffffffff;
+            h3 = ((h3 >>> 18) | (h4 << 8)) & 0xffffffff;
+
+            // mac = (h + pad) % (2^128)
+            let f = h0 + this.pad[0];
+            h0 = f & 0xffffffff;
+            f = h1 + this.pad[1] + (f >>> 32);
+            h1 = f & 0xffffffff;
+            f = h2 + this.pad[2] + (f >>> 32);
+            h2 = f & 0xffffffff;
+            f = h3 + this.pad[3] + (f >>> 32);
+            h3 = f & 0xffffffff;
+
+            const mac = new Uint8Array(16);
+            writeUint32LE(mac, h0, 0);
+            writeUint32LE(mac, h1, 4);
+            writeUint32LE(mac, h2, 8);
+            writeUint32LE(mac, h3, 12);
+
+            // Zero out sensitive state
+            this.destroy();
+
+            return mac;
+        }
+
+        destroy() {
+            for (let i = 0; i < this.h.length; i++) this.h[i] = 0;
+            for (let i = 0; i < this.r.length; i++) this.r[i] = 0;
+            for (let i = 0; i < this.pad.length; i++) this.pad[i] = 0;
+            for (let i = 0; i < this.buffer.length; i++) this.buffer[i] = 0;
+            this.leftover = 0;
+            this.final = true;
+        }
+    }
+
+    // Helper functions for little-endian operations
+    function readUint32LE(buf, offset) {
+        return (buf[offset] |
+            (buf[offset + 1] << 8) |
+            (buf[offset + 2] << 16) |
+            (buf[offset + 3] << 24)) >>> 0;
+    }
+
+    function writeUint32LE(buf, value, offset) {
+        buf[offset] = value & 0xff;
+        buf[offset + 1] = (value >>> 8) & 0xff;
+        buf[offset + 2] = (value >>> 16) & 0xff;
+        buf[offset + 3] = (value >>> 24) & 0xff;
+    }
+
+    async function generateKey() {
+        const key = new Uint8Array(32);
+        crypto.getRandomValues(key);
+        return key;
+    }
+
+    async function generateNonce() {
+        const nonce = new Uint8Array(12);
+        crypto.getRandomValues(nonce);
+        return nonce;
+    }
+
+    let currentKey, currentNonce, currentMac;
+
+    async function encryptMessage() {
+        const messageInput = document.getElementById('messageInput').value;
+        const aadInput = document.getElementById('aadInput').value;
+        const results = document.getElementById('results');
+        results.innerHTML = '';
+
+        try {
+            // Generate key and nonce
+            currentKey = await generateKey();
+            currentNonce = await generateNonce();
+
+            // Convert message to bytes
+            const messageBytes = new TextEncoder().encode(messageInput);
+            const aadBytes = new TextEncoder().encode(aadInput);
+
+            // Create ChaCha20 instance
+            const chacha = new ChaCha20(currentKey, currentNonce);
+
+            // Encrypt message
+            const ciphertext = chacha.encrypt(messageBytes);
+
+            // Generate Poly1305 key
+            const poly = new Poly1305(currentKey);
+
+            // Update MAC with AAD
+            if (aadBytes.length > 0) {
+                poly.update(aadBytes);
+                // Pad to 16 bytes
+                const padding = 16 - (aadBytes.length % 16);
+                if (padding < 16) {
+                    poly.update(new Uint8Array(padding));
+                }
+            }
+
+            // Update MAC with ciphertext
+            poly.update(ciphertext);
+
+            // Finalize MAC
+            currentMac = poly.finish();
+
+            // Display results
+            const stepContainer = document.createElement('div');
+            stepContainer.className = 'step-container';
+
+            stepContainer.innerHTML = `
+                    <h3>Encryption Results</h3>
+                    <div class="bytes-view">
+                        <strong>Key (hex):</strong> ${Array.from(currentKey).map(b => b.toString(16).padStart(2, '0')).join(' ')}<br>
+                        <strong>Nonce (hex):</strong> ${Array.from(currentNonce).map(b => b.toString(16).padStart(2, '0')).join(' ')}<br>
+                        <strong>Message (hex):</strong> ${Array.from(messageBytes).map(b => b.toString(16).padStart(2, '0')).join(' ')}<br>
+                        <strong>Ciphertext (hex):</strong> ${Array.from(ciphertext).map(b => b.toString(16).padStart(2, '0')).join(' ')}<br>
+                        <strong>MAC (hex):</strong> ${Array.from(currentMac).map(b => b.toString(16).padStart(2, '0')).join(' ')}<br>
+                    </div>
+                `;
+            results.appendChild(stepContainer);
+        } catch (e) {
+            results.innerHTML = `<div class="error">${e.message}</div>`;
+        }
+    }
+</script>
+</body>
+</html>

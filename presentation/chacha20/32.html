@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ChaCha20-Poly1305 Visualization</title>
+    <link rel="stylesheet" href="https://unpkg.com/carbon-components/css/carbon-components.min.css">
+    <style>
+        .state-matrix {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            margin: 20px 0;
+        }
+        .state-cell {
+            background: #f4f4f4;
+            padding: 8px;
+            text-align: center;
+            font-family: 'IBM Plex Mono', monospace;
+        }
+        .state-cell.changed {
+            background: #08bdba;
+            color: white;
+        }
+        .step-container {
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+<div class="bx--grid">
+    <div class="bx--row">
+        <div class="bx--col">
+            <h1 class="bx--heading">ChaCha20-Poly1305 Visualization</h1>
+
+            <!-- Input Section -->
+            <div class="bx--form-item">
+                <label for="input-text" class="bx--label">Input Text</label>
+                <input id="input-text" type="text" class="bx--text-input" placeholder="Enter text to encrypt">
+            </div>
+
+            <div class="bx--form-item">
+                <label for="key" class="bx--label">Key (32 bytes, hex)</label>
+                <input id="key" type="text" class="bx--text-input" value="000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f">
+            </div>
+
+            <div class="bx--form-item">
+                <label for="nonce" class="bx--label">Nonce (12 bytes, hex)</label>
+                <input id="nonce" type="text" class="bx--text-input" value="000000000000000000000000">
+            </div>
+
+            <button class="bx--btn bx--btn--primary" id="encrypt-btn">Encrypt</button>
+            <button class="bx--btn bx--btn--secondary" id="decrypt-btn">Decrypt</button>
+
+            <!-- State Matrix Visualization -->
+            <div class="bx--tile">
+                <h3>Internal State Matrix</h3>
+                <div id="state-matrix" class="state-matrix"></div>
+            </div>
+
+            <!-- Round Operations -->
+            <div class="bx--accordion">
+                <div class="bx--accordion__item">
+                    <button class="bx--accordion__heading" aria-expanded="false">
+                        <span class="bx--accordion__title">Round Operations</span>
+                    </button>
+                    <div class="bx--accordion__content" id="round-operations"></div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="bx--tile">
+                <h3>Results</h3>
+                <div id="results"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/carbon-components/scripts/carbon-components.min.js"></script>
+<script>
+    class ChaCha20Poly1305 {
+        constructor(key, nonce) {
+            this.state = new Uint32Array(16);
+            this.key = this.hexToUint8Array(key);
+            this.nonce = this.hexToUint8Array(nonce);
+            this.initialize();
+        }
+
+        initialize() {
+            // Constants "expand 32-byte k"
+            this.state[0] = 0x61707865;
+            this.state[1] = 0x3320646e;
+            this.state[2] = 0x79622d32;
+            this.state[3] = 0x6b206574;
+
+            // Key
+            for (let i = 0; i < 8; i++) {
+                this.state[4 + i] = this.readLE32(this.key, i * 4);
+            }
+
+            // Block counter and nonce
+            this.state[12] = 0;
+            for (let i = 0; i < 3; i++) {
+                this.state[13 + i] = this.readLE32(this.nonce, i * 4);
+            }
+        }
+
+        quarterRound(a, b, c, d) {
+            let oldState = [...this.state];
+
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] = this.rotl((this.state[d] ^ this.state[a]), 16);
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] = this.rotl((this.state[b] ^ this.state[c]), 12);
+
+            this.state[a] = (this.state[a] + this.state[b]) >>> 0;
+            this.state[d] = this.rotl((this.state[d] ^ this.state[a]), 8);
+
+            this.state[c] = (this.state[c] + this.state[d]) >>> 0;
+            this.state[b] = this.rotl((this.state[b] ^ this.state[c]), 7);
+
+            updateStateMatrix(oldState);
+
+            return oldState;
+        }
+
+        rotl(a, b) {
+            return ((a << b) | (a >>> (32 - b))) >>> 0;
+        }
+
+        hexToUint8Array(hex) {
+            return new Uint8Array(hex.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        }
+
+        readLE32(arr, index) {
+            return arr[index] | (arr[index + 1] << 8) | (arr[index + 2] << 16) | (arr[index + 3] << 24);
+        }
+
+        encrypt(text) {
+            // Convert text to bytes
+            const input = new TextEncoder().encode(text);
+            const output = new Uint8Array(input.length);
+
+            // Generate keystream
+            let keystream = this.generateKeyStream();
+
+            // XOR input with keystream
+            for (let i = 0; i < input.length; i++) {
+                output[i] = input[i] ^ keystream[i];
+            }
+
+            // Generate Poly1305 tag
+            const tag = this.generatePoly1305Tag(output);
+
+            return {
+                ciphertext: Array.from(output).map(b => b.toString(16).padStart(2, '0')).join(''),
+                tag: Array.from(tag).map(b => b.toString(16).padStart(2, '0')).join('')
+            };
+        }
+
+        decrypt(ciphertext, tag) {
+            // Convert hex to bytes
+            const input = new Uint8Array(ciphertext.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+            const output = new Uint8Array(input.length);
+
+            // Generate keystream
+            let keystream = this.generateKeyStream();
+
+            // XOR input with keystream
+            for (let i = 0; i < input.length; i++) {
+                output[i] = input[i] ^ keystream[i];
+            }
+
+            // Verify Poly1305 tag
+            const computedTag = this.generatePoly1305Tag(input);
+            const tagValid = this.constantTimeEqual(computedTag, new Uint8Array(tag.match(/.{1,2}/g).map(byte => parseInt(byte, 16))));
+
+            return {
+                plaintext: new TextDecoder().decode(output),
+                valid: tagValid
+            };
+        }
+
+        generateKeyStream() {
+            // Implementation of ChaCha20 block function
+            let working = new Uint32Array(this.state);
+
+            // 20 rounds (10 iterations of double round)
+            for (let i = 0; i < 10; i++) {
+                // Column rounds
+                this.quarterRound(0, 4, 8, 12);
+                this.quarterRound(1, 5, 9, 13);
+                this.quarterRound(2, 6, 10, 14);
+                this.quarterRound(3, 7, 11, 15);
+
+                // Diagonal rounds
+                this.quarterRound(0, 5, 10, 15);
+                this.quarterRound(1, 6, 11, 12);
+                this.quarterRound(2, 7, 8, 13);
+                this.quarterRound(3, 4, 9, 14);
+            }
+
+            // Add working state to initial state
+            for (let i = 0; i < 16; i++) {
+                working[i] = (working[i] + this.state[i]) >>> 0;
+            }
+
+            // Convert to bytes
+            const keystream = new Uint8Array(64);
+            for (let i = 0; i < 16; i++) {
+                keystream[i * 4] = working[i] & 0xff;
+                keystream[i * 4 + 1] = (working[i] >>> 8) & 0xff;
+                keystream[i * 4 + 2] = (working[i] >>> 16) & 0xff;
+                keystream[i * 4 + 3] = (working[i] >>> 24) & 0xff;
+            }
+
+            return keystream;
+        }
+
+        generatePoly1305Tag(data) {
+            // Simplified Poly1305 tag generation
+            const tag = new Uint8Array(16);
+            // ... (actual implementation would go here)
+            return tag;
+        }
+
+        constantTimeEqual(a, b) {
+            if (a.length !== b.length) return false;
+            let result = 0;
+            for (let i = 0; i < a.length; i++) {
+                result |= a[i] ^ b[i];
+            }
+            return result === 0;
+        }
+    }
+
+    // UI Update Functions
+    function updateStateMatrix(state) {
+        const matrix = document.getElementById('state-matrix');
+        matrix.innerHTML = '';
+
+        for (let i = 0; i < 16; i++) {
+            const cell = document.createElement('div');
+            cell.className = 'state-cell';
+            cell.textContent = '0x' + state[i].toString(16).padStart(8, '0');
+            matrix.appendChild(cell);
+        }
+    }
+
+    function updateRoundOperations(round, operation) {
+        const ops = document.getElementById('round-operations');
+        const entry = document.createElement('div');
+        entry.className = 'bx--tile';
+        entry.innerHTML = `<p>Round ${round}: ${operation}</p>`;
+        ops.appendChild(entry);
+    }
+
+    // Event Listeners
+    document.getElementById('encrypt-btn').addEventListener('click', () => {
+        const input = document.getElementById('input-text').value;
+        const key = document.getElementById('key').value;
+        const nonce = document.getElementById('nonce').value;
+
+        const chacha = new ChaCha20Poly1305(key, nonce);
+        const result = chacha.encrypt(input);
+
+        document.getElementById('results').innerHTML = `
+                <div class="bx--tile">
+                    <p>Ciphertext: ${result.ciphertext}</p>
+                    <p>Tag: ${result.tag}</p>
+                </div>
+            `;
+    });
+
+    document.getElementById('decrypt-btn').addEventListener('click', () => {
+        const results = document.getElementById('results');
+        const ciphertextElement = results.querySelector('p');
+        if (!ciphertextElement) return;
+
+        const ciphertext = ciphertextElement.textContent.split(': ')[1];
+        const tag = results.querySelector('p:nth-child(2)').textContent.split(': ')[1];
+
+        const key = document.getElementById('key').value;
+        const nonce = document.getElementById('nonce').value;
+
+        const chacha = new ChaCha20Poly1305(key, nonce);
+        const result = chacha.decrypt(ciphertext, tag);
+
+        results.innerHTML += `
+                <div class="bx--tile">
+                    <p>Decrypted Text: ${result.plaintext}</p>
+                    <p>Tag Valid: ${result.valid}</p>
+                </div>
+            `;
+    });
+</script>
+</body>
+</html>
